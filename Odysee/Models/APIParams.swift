@@ -64,3 +64,16 @@ struct TransactionListParams: Encodable {
     var page: Int?
     var pageSize: Int?
 }
+
+struct ChannelCreateUpdateParams: Encodable {
+    var name: String? // required for create
+    var claimId: String? // required for update
+    var bid: String? // required for create
+    var blocking: Bool?
+    var coverUrl: String?
+    var thumbnailUrl: String?
+    var title: String?
+    var description: String?
+    var websiteUrl: String?
+    var email: String?
+}

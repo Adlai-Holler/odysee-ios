@@ -188,45 +188,30 @@ class FirstRunViewController: UIViewController, FirstRunDelegate {
         creatingChannel = true
         self.requestStarted()
         
-        var options: Dictionary<String, Any> = [:]
-        options["name"] = name
-        options["bid"] = Helper.sdkAmountFormatter.string(from: deposit as NSDecimalNumber)!
-        options["blocking"] = true
-        Lbry.apiCall(method: Lbry.methodChannelCreate, params: options, connectionString: Lbry.lbrytvConnectionString, authToken: Lbryio.authToken, completion: { data, error in
-            guard let data = data, error == nil else {
-                self.showError(error: error)
-                self.creatingChannel = false
-                self.requestFinished(showSkip: true, showContinue: true)
-                if self.firstChannelVc != nil {
-                    self.firstChannelVc.finishLoading()
-                }
-                return
+        Lbry.apiCall(method: Lbry.Methods.channelCreate,
+                     params: .init(
+                        name: name!,
+                        bid: Helper.sdkAmountFormatter.string(from: deposit as NSDecimalNumber)!,
+                        blocking: true)
+        )
+        .tryMap { response -> Claim in
+            // Extract claim. Throw error if no claim.
+            guard let claim = response.outputs?.first else {
+                throw GenericError(.localized("An unknown error occurred. Please try again."))
             }
-            
+            return claim
+        }
+        .showError()
+        .subscribeResult { result in
             self.creatingChannel = false
-            let result = data["result"] as? [String: Any]
-            let outputs = result?["outputs"] as? [[String: Any]]
-            if (outputs != nil) {
-                outputs?.forEach{ item in
-                    let data = try! JSONSerialization.data(withJSONObject: item, options: [.prettyPrinted, .sortedKeys])
-                    do {
-                        let claimResult: Claim? = try JSONDecoder().decode(Claim.self, from: data)
-                        if (claimResult != nil) {
-                            Lbryio.logPublishEvent(claimResult!)
-                        }
-                    } catch {
-                        // pass
-                    }
-                }
-                
-                self.nextStep()
+            guard case let .success(claim) = result else {
+                self.requestFinished(showSkip: true, showContinue: true)
+                self.firstChannelVc?.finishLoading()
                 return
             }
-            
-            self.showError(message: String.localized("An unknown error occurred. Please try again."))
-            self.requestFinished(showSkip: true, showContinue: true)
-            self.firstChannelVc.finishLoading()
-        })
+            Lbryio.logPublishEvent(claim)
+            self.nextStep()
+        }
     }
     
     func nextStep() {

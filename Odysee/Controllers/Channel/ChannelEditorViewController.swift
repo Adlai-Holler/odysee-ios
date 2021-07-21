@@ -178,93 +178,75 @@ class ChannelEditorViewController: UIViewController, UITextFieldDelegate, UIGest
             return
         }
         
-        
-        var options: Dictionary<String, Any> = [:]
+        var options = ChannelCreateUpdateParams()
         if !editMode {
-            options["name"] = name
+            options.name = name
         } else {
-            options["claim_id"] = currentClaim?.claimId
+            options.claimId = currentClaim?.claimId
         }
         
-        options["bid"] = Helper.sdkAmountFormatter.string(from: deposit! as NSDecimalNumber)!
-        options["blocking"] = true
+        options.bid = Helper.sdkAmountFormatter.string(from: deposit! as NSDecimalNumber)!
+        options.blocking = true
         
         if !(currentCoverUrl ?? "").isBlank {
-            options["cover_url"] = currentCoverUrl!
+            options.coverUrl = currentCoverUrl!
         }
         if !(currentThumbnailUrl ?? "").isBlank {
-            options["thumbnail_url"] = currentThumbnailUrl!
+            options.thumbnailUrl = currentThumbnailUrl!
         }
         if !(titleField.text ?? "").isBlank {
-            options["title"] = titleField.text
+            options.title = titleField.text
         }
         if !(descriptionField.text ?? "").isBlank {
-            options["description"] = descriptionField.text
+            options.description = descriptionField.text
         }
         if !(websiteField.text ?? "").isBlank {
-            options["website_url"] = websiteField.text
+            options.websiteUrl = websiteField.text
         }
         if !(emailField.text ?? "").isBlank {
-            options["email"] = emailField.text
+            options.email = emailField.text
         }
         
         saveInProgress = true
         savingIndicator.isHidden = false
         toggleOptionalFieldsButton.isHidden = true
         checkControlStates()
-        let method = editMode ? Lbry.methodChannelUpdate : Lbry.methodChannelCreate
-        Lbry.apiCall(method: method, params: options, connectionString: Lbry.lbrytvConnectionString, authToken: Lbryio.authToken, completion: { data, error in
-            guard let data = data, error == nil else {
-                self.showError(error: error)
+        Lbry.apiCall(method: editMode ? Lbry.Methods.channelCreate : Lbry.Methods.channelUpdate,
+                     params: options
+        ).tryMap { response -> Claim in
+            // Extract claim, throw error if no claim.
+            guard let claim = response.outputs?.first else {
+                throw GenericError(.localized("An unknown error occurred. Please try again."))
+            }
+            return claim
+        }
+        .showError()
+        .subscribeResult { result in
+            defer {
                 self.saveInProgress = false
                 self.checkControlStates()
+            }
+            guard case let .success(claim) = result else {
                 return
             }
-            
-            self.saveInProgress = false
-            let result = data["result"] as? [String: Any]
-            let outputs = result?["outputs"] as? [[String: Any]]
-            if (outputs != nil) {
-                outputs?.forEach{ item in
-                    let data = try! JSONSerialization.data(withJSONObject: item, options: [.prettyPrinted, .sortedKeys])
-                    do {
-                        let claimResult: Claim? = try JSONDecoder().decode(Claim.self, from: data)
-                        if (claimResult != nil && !editMode) {
-                            Lbryio.logPublishEvent(claimResult!)
-                        }
-                    } catch let error {
-                        print(error)
-                    }
-                }
-                
-                DispatchQueue.main.async {
-                    self.showMessage(message: String.localized(editMode ? "The channel was successfully updated" : "The channel was successfully created"))
-                    if let vc = self.commentsVc {
-                        vc.loadChannels()
-                    }
-                    self.navigationController?.popViewController(animated: true)
-                }
-                return
-            }
-            
-            self.showError(message: String.localized("An unknown error occurred. Please try again."))
-            self.checkControlStates()
-        })
+            Lbryio.logPublishEvent(claim)
+            self.showMessage(message: .localized(editMode ? "The channel was successfully updated" : "The channel was successfully created"))
+            self.commentsVc?.loadChannels()
+            self.navigationController?.popViewController(animated: true)
+        }
     }
         
     func checkControlStates() {
-        DispatchQueue.main.async {
-            if self.saveInProgress {
-                self.cancelButton.isEnabled = false
-                self.saveButton.isEnabled = false
-                self.savingIndicator.isHidden = false
-                self.toggleOptionalFieldsButton.isHidden = true
-            } else {
-                self.cancelButton.isEnabled = true
-                self.saveButton.isEnabled = true
-                self.savingIndicator.isHidden = true
-                self.toggleOptionalFieldsButton.isHidden = false
-            }
+        if saveInProgress {
+            cancelButton.isEnabled = false
+            saveButton.isEnabled = false
+            savingIndicator.isHidden = false
+            toggleOptionalFieldsButton.isHidden = true
+        } else {
+            cancelButton.isEnabled = true
+            saveButton.isEnabled = true
+            savingIndicator.isHidden = true
+            toggleOptionalFieldsButton.isHidden = false
         }
     }
     

@@ -207,4 +207,16 @@ extension Publisher {
                 f(.success($0))
             }))
     }
+    
+    // Attach a side effect to this publisher to show any error that occurs in the UI.
+    func showError() -> Publishers.HandleEvents<Self> {
+        return handleEvents(receiveCompletion: {
+            if case let .failure(error) = $0 {
+                Thread.performOnMain {
+                    let appDelegate = UIApplication.shared.delegate as! AppDelegate
+                    appDelegate.mainController.showError(error: error)
+                }
+            }
+        })
+    }
 }
